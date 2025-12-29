@@ -1,0 +1,98 @@
+import os
+import re
+import requests
+from pytube import YouTube
+from moviepy import VideoFileClip
+from urllib.parse import urlparse, parse_qs
+from TikTokApi import TikTokApi
+
+class VideoDownloader:
+    @staticmethod
+    def is_tiktok(url):
+        return 'tiktok.com' in url
+
+    @staticmethod
+    def is_youtube_shorts(url):
+        return 'youtube.com/shorts/' in url or 'youtu.be/' in url
+
+    @staticmethod
+    def download_youtube_shorts(url):
+        try:
+            yt = YouTube(url)
+            video = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+            if not video:
+                return None
+            
+            output_path = 'downloads'
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+                
+            file_path = video.download(output_path=output_path)
+            return file_path
+        except Exception as e:
+            print(f"Error downloading YouTube Shorts: {str(e)}")
+            return None
+
+    @staticmethod
+    def download_tiktok(url):
+        try:
+            # Создаем временный каталог, если его нет
+            output_path = 'downloads'
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+                
+            # Используем TikTokApi для загрузки видео
+            with TikTokApi() as api:
+                video = api.video(url=url)
+                video_data = video.bytes()
+                
+                # Сохраняем видео во временный файл
+                file_path = os.path.join(output_path, f"tiktok_{video.id}.mp4")
+                with open(file_path, 'wb') as f:
+                    f.write(video_data)
+                    
+                return file_path
+                
+        except Exception as e:
+            print(f"Ошибка при загрузке видео из TikTok: {str(e)}")
+            # Пробуем использовать запасной метод, если TikTokApi не сработал
+            try:
+                api_url = "https://api.tikmate.app/api/convert"
+                payload = {'url': url, 'hd': '1'}
+                response = requests.post(api_url, data=payload, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('success'):
+                        video_url = data.get('url')
+                        if video_url:
+                            file_path = os.path.join(output_path, f"tiktok_{os.path.basename(urlparse(video_url).path)}")
+                            
+                            with requests.get(video_url, stream=True, timeout=30) as r:
+                                r.raise_for_status()
+                                with open(file_path, 'wb') as f:
+                                    for chunk in r.iter_content(chunk_size=8192):
+                                        f.write(chunk)
+                            return file_path
+            except Exception as fallback_error:
+                print(f"Запасной метод загрузки также не сработал: {str(fallback_error)}")
+                
+            return None
+
+    @staticmethod
+    def get_video_info(url):
+        if VideoDownloader.is_youtube_shorts(url):
+            yt = YouTube(url)
+            return {
+                'title': yt.title,
+                'duration': yt.length,
+                'thumbnail': yt.thumbnail_url,
+                'platform': 'youtube_shorts'
+            }
+        elif VideoDownloader.is_tiktok(url):
+            # This is a placeholder - you might need to implement actual TikTok metadata fetching
+            return {
+                'title': 'TikTok Video',
+                'platform': 'tiktok'
+            }
+        return None
