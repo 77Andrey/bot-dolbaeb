@@ -1,0 +1,30 @@
+# Render.com Deployment Configuration
+
+version: "1"
+services:
+  web:
+    type: worker
+    name: tiktok-video-bot
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    healthCheckTimeout: 100
+    autoDeploy: true
+    plan: free
+    region: oregon
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        value: 8504400803:AAGLJpgD1l043FFBodiCVlCFMfvtlN0tFGs
+      - key: ADMIN_IDS
+        value: 2089005500
+      - key: MAX_CONCURRENT
+        value: 3
+      - key: MAX_PER_MINUTE
+        value: 2
+      - key: SPAM_THRESHOLD
+        value: 10
+      - key: SPAM_BAN_MINUTES
+        value: 5
+      - key: PYTHONUNBUFFERED
+        value: 1
