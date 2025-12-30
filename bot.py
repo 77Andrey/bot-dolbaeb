@@ -3,9 +3,11 @@ import logging
 import asyncio
 import time
 import json
+import threading
 from pathlib import Path
 from dotenv import load_dotenv
 from collections import defaultdict, deque
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import Update, InputFile
 from telegram.ext import (
@@ -27,6 +29,26 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+# Hide token from logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# Health server for Render
+def _start_health_server():
+    port = int(os.environ.get("PORT", "10000"))
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *args):
+            return  # чтобы не спамить логами
+
+    HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+
+threading.Thread(target=_start_health_server, daemon=True).start()
 
 # Initialize video downloader
 downloader = VideoDownloader()
