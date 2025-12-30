@@ -126,7 +126,7 @@ class VideoDownloader:
 
     @staticmethod
     def download_tiktok(url: str):
-        """Скачивает TikTok видео через yt-dlp (работает на PythonAnywhere)."""
+        """Скачивает TikTok видео через yt-dlp с несколькими попытками."""
 
         os.makedirs("downloads", exist_ok=True)
         
@@ -134,48 +134,60 @@ class VideoDownloader:
         os.environ.setdefault("SSL_CERT_FILE", certifi.where())
         os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
         
-        try:
-            print(f"Пробуем скачать TikTok через yt-dlp: {url}")
-            
-            outtmpl = os.path.join("downloads", "tiktok_%(id)s.%(ext)s")
-            ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-            
-            ydl_opts = {
-                "outtmpl": outtmpl,
-                "format": "best[ext=mp4][height<=720]",
-                "noplaylist": True,
-                "quiet": True,
-                "no_warnings": True,
-                "socket_timeout": 30,
-                "retries": 3,
-                "fragment_retries": 3,
-                "ffmpeg_location": ffmpeg_path,
-                "postprocessors": [
-                    {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
-                ]
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                if not info:
-                    print("yt-dlp не смог получить информацию о видео")
-                    return None
+        # Пробуем несколько форматов
+        formats = [
+            "best[ext=mp4][height<=720]",  # лучший MP4 до 720p
+            "best[ext=mp4]",               # любой MP4
+            "best[height<=720]",           # любой формат до 720p
+            "best"                         # лучший доступный
+        ]
+        
+        for fmt in formats:
+            try:
+                print(f"Пробуем формат {fmt} для {url}")
                 
-                # Ищем скачанный файл
-                path = ydl.prepare_filename(info)
-                base, _ = os.path.splitext(path)
-                mp4_path = base + ".mp4"
+                outtmpl = os.path.join("downloads", "tiktok_%(id)s.%(ext)s")
+                ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
                 
-                if os.path.exists(mp4_path):
-                    print(f"Успешно загружено через yt-dlp: {mp4_path}")
-                    return mp4_path
-                elif os.path.exists(path):
-                    print(f"Успешно загружено через yt-dlp: {path}")
-                    return path
-                else:
-                    print("Файл не найден после загрузки")
-                    return None
+                ydl_opts = {
+                    "outtmpl": outtmpl,
+                    "format": fmt,
+                    "noplaylist": True,
+                    "quiet": True,
+                    "no_warnings": True,
+                    "socket_timeout": 30,
+                    "retries": 2,
+                    "fragment_retries": 2,
+                    "ffmpeg_location": ffmpeg_path,
+                    "postprocessors": [
+                        {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
+                    ]
+                }
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    if not info:
+                        print(f"Формат {fmt}: не удалось получить информацию")
+                        continue
                     
-        except Exception as e:
-            print(f"Ошибка yt-dlp: {e}")
-            return None
+                    # Ищем скачанный файл
+                    path = ydl.prepare_filename(info)
+                    base, _ = os.path.splitext(path)
+                    mp4_path = base + ".mp4"
+                    
+                    if os.path.exists(mp4_path):
+                        print(f"Успешно загружено через yt-dlp ({fmt}): {mp4_path}")
+                        return mp4_path
+                    elif os.path.exists(path):
+                        print(f"Успешно загружено через yt-dlp ({fmt}): {path}")
+                        return path
+                    else:
+                        print(f"Формат {fmt}: файл не найден после загрузки")
+                        continue
+                        
+            except Exception as e:
+                print(f"Формат {fmt}: ошибка - {e}")
+                continue
+                
+        print("Все форматы TikTok не сработали")
+        return None
