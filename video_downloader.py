@@ -58,17 +58,20 @@ class VideoDownloader:
         outtmpl = os.path.join("downloads", "%(id)s.%(ext)s")
         ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
 
-        def _download_with_format(fmt: str, need_merge: bool, force_mp4: bool):
+        def _download_with_format(fmt: str, need_merge: bool, force_mp4: bool, headers: dict = None):
             ydl_opts = {
                 "outtmpl": outtmpl,
                 "format": fmt,
                 "noplaylist": True,
                 "quiet": True,
                 "no_warnings": True,
-                "socket_timeout": 30,  # Таймаут сетевых операций
-                "retries": 3,  # Количество попыток
-                "fragment_retries": 3,  # Повторы для фрагментов
+                "socket_timeout": 30,
+                "retries": 3,
+                "fragment_retries": 3,
             }
+            # Добавляем headers для обхода блокировки
+            if headers:
+                ydl_opts["http_headers"] = headers
             # Подкладываем ffmpeg без Homebrew
             ydl_opts["ffmpeg_location"] = ffmpeg_path
 
@@ -104,23 +107,34 @@ class VideoDownloader:
 
                 return path if path and os.path.exists(path) else None
 
-        # 1) Сначала пытаемся взять сразу mp4 с H.264 + AAC (максимально совместимо с Telegram)
-        try:
-            progressive_fmt = "best[ext=mp4][vcodec^=avc1][acodec^=mp4a]/best[ext=mp4][vcodec!=none][acodec!=none]"
-            p = _download_with_format(progressive_fmt, need_merge=False, force_mp4=True)
-            if p:
-                return p
-        except Exception:
-            pass
-
-        # 2) Fallback: bestvideo + bestaudio (склейка + перекодирование в mp4)
-        try:
-            merge_fmt = "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio"
-            p = _download_with_format(merge_fmt, need_merge=True, force_mp4=True)
-            if p:
-                return p
-        except Exception:
-            return None
+        # Пробуем разные подходы для обхода блокировки
+        approaches = [
+            ("Стандартный", {}),
+            ("Мобильный UA", {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15"}),
+            ("Desktop UA", {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        ]
+        
+        for approach_name, headers in approaches:
+            try:
+                print(f"Пробуем YouTube: {approach_name}")
+                
+                # 1) Сначала пытаемся взять сразу mp4 с H.264 + AAC
+                progressive_fmt = "best[ext=mp4][vcodec^=avc1][acodec^=mp4a]/best[ext=mp4][vcodec!=none][acodec!=none]"
+                p = _download_with_format(progressive_fmt, need_merge=False, force_mp4=True, headers=headers)
+                if p:
+                    print(f"YouTube ({approach_name}): {p}")
+                    return p
+                
+                # 2) Fallback: bestvideo + bestaudio
+                merge_fmt = "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo+bestaudio"
+                p = _download_with_format(merge_fmt, need_merge=True, force_mp4=True, headers=headers)
+                if p:
+                    print(f"YouTube ({approach_name}): {p}")
+                    return p
+                    
+            except Exception as e:
+                print(f"YouTube ({approach_name}): ошибка - {e}")
+                continue
 
         return None
 
