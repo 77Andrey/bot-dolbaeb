@@ -134,12 +134,12 @@ class VideoDownloader:
         os.environ.setdefault("SSL_CERT_FILE", certifi.where())
         os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
         
-        # Пробуем несколько форматов
+        # Пробуем несколько форматов от простого к сложному
         formats = [
-            "best[ext=mp4][height<=720]",  # лучший MP4 до 720p
+            "best",                        # лучший доступный (самый надежный)
+            "worst",                       # худший (если лучший не работает)
+            "best[height<=720]",          # любой до 720p
             "best[ext=mp4]",               # любой MP4
-            "best[height<=720]",           # любой формат до 720p
-            "best"                         # лучший доступный
         ]
         
         for fmt in formats:
@@ -159,9 +159,7 @@ class VideoDownloader:
                     "retries": 2,
                     "fragment_retries": 2,
                     "ffmpeg_location": ffmpeg_path,
-                    "postprocessors": [
-                        {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
-                    ]
+                    # Убираем postprocessors для надежности
                 }
                 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:

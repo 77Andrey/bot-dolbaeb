@@ -302,8 +302,8 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, p
             logger.info("Результат загрузки YouTube: %s", video_path)
 
         if not video_path:
-            await processing_message.edit_text("❌ Не удалось загрузить видео (пустой путь)")
-            logger.error("Видео_path равен None")
+            await processing_message.edit_text("❌ Не удалось скачать видео. Попробуй другую ссылку или повтори позже.")
+            logger.warning("Не удалось скачать видео: %s", text)
             return
             
         if not os.path.exists(video_path):
