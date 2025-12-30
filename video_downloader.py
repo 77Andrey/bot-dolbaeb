@@ -134,33 +134,86 @@ class VideoDownloader:
 
         os.makedirs("downloads", exist_ok=True)
 
-        # API tikwm: https://tikwm.com/api/?url=<tiktok_url>
-        # Обычно возвращает JSON с data.play (mp4).
-        api_url = "https://tikwm.com/api/"
-        try:
-            # Уменьшаем таймаут для получения метаданных
-            r = requests.get(api_url, params={"url": url}, timeout=15)
-            r.raise_for_status()
-            data = r.json()
+        # Пробуем несколько API сервисов
+        apis = [
+            {
+                "name": "tikmate",
+                "url": "https://tikmate.online/download",
+                "method": "POST"
+            },
+            {
+                "name": "tikwm",
+                "url": "https://tikwm.com/api/",
+                "method": "GET"
+            },
+            {
+                "name": "snaptik",
+                "url": "https://snaptik.app/abc",
+                "method": "POST"
+            }
+        ]
+        
+        for api in apis:
+            try:
+                print(f"Пробую API: {api['name']}")
+                
+                if api["name"] == "tikwm":
+                    # tikwm API
+                    r = requests.get(api["url"], params={"url": url}, timeout=15)
+                    r.raise_for_status()
+                    data = r.json()
+                    
+                    play_url = (
+                        data.get("data", {}).get("play")
+                        or data.get("data", {}).get("wmplay")
+                        or data.get("data", {}).get("hdplay")
+                    )
+                    
+                elif api["name"] == "tikmate":
+                    # tikmate API
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                    r = requests.get(api["url"], params={"url": url}, headers=headers, timeout=20)
+                    r.raise_for_status()
+                    
+                    # Ищем видео URL в HTML ответе
+                    import re
+                    video_match = re.search(r'href="(https://[^"]+\.mp4)"', r.text)
+                    if video_match:
+                        play_url = video_match.group(1)
+                    else:
+                        print(f"API {api['name']}: не найден URL видео в HTML")
+                        continue
+                        
+                else:
+                    # Другие API пока пропускаем
+                    continue
+                    
+                if not play_url:
+                    print(f"API {api['name']}: не найден URL видео")
+                    continue
+                    
+                print(f"API {api['name']}: найден URL {play_url[:50]}...")
+                
+                out_path = os.path.join("downloads", f"tiktok_{int(time.time())}.mp4")
+                # Уменьшаем таймаут и увеличиваем chunk_size для более быстрой загрузки
+                with requests.get(play_url, stream=True, timeout=45) as vid:
+                    vid.raise_for_status()
+                    with open(out_path, "wb") as f:
+                        for chunk in vid.iter_content(chunk_size=1024 * 512):  # 512KB chunks
+                            if chunk:
+                                f.write(chunk)
 
-            play_url = (
-                data.get("data", {}).get("play")
-                or data.get("data", {}).get("wmplay")
-                or data.get("data", {}).get("hdplay")
-            )
-            if not play_url:
-                return None
-
-            out_path = os.path.join("downloads", f"tiktok_{int(time.time())}.mp4")
-            # Уменьшаем таймаут и увеличиваем chunk_size для более быстрой загрузки
-            with requests.get(play_url, stream=True, timeout=45) as vid:
-                vid.raise_for_status()
-                with open(out_path, "wb") as f:
-                    for chunk in vid.iter_content(chunk_size=1024 * 512):  # 512KB chunks
-                        if chunk:
-                            f.write(chunk)
-
-            return out_path if os.path.exists(out_path) else None
-
-        except Exception:
-            return None
+                if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+                    print(f"Успешно загружено через {api['name']}: {out_path}")
+                    return out_path
+                else:
+                    print(f"Файл не сохранен через {api['name']}")
+                    
+            except Exception as e:
+                print(f"Ошибка API {api['name']}: {e}")
+                continue
+                
+        print("Все API TikTok не сработали")
+        return None
