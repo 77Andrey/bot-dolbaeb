@@ -126,94 +126,56 @@ class VideoDownloader:
 
     @staticmethod
     def download_tiktok(url: str):
-        """Скачивает TikTok видео через публичный API (без TikTokApi).
-
-        Важно: это не гарантированно стабильный способ — публичные сервисы могут
-        менять API/ограничивать запросы.
-        """
+        """Скачивает TikTok видео через yt-dlp (работает на PythonAnywhere)."""
 
         os.makedirs("downloads", exist_ok=True)
-
-        # Пробуем несколько API сервисов
-        apis = [
-            {
-                "name": "tikmate",
-                "url": "https://tikmate.online/download",
-                "method": "POST"
-            },
-            {
-                "name": "tikwm",
-                "url": "https://tikwm.com/api/",
-                "method": "GET"
-            },
-            {
-                "name": "snaptik",
-                "url": "https://snaptik.app/abc",
-                "method": "POST"
-            }
-        ]
         
-        for api in apis:
-            try:
-                print(f"Пробую API: {api['name']}")
+        # На macOS/Python 3.13 иногда не подтягиваются корневые сертификаты.
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+        
+        try:
+            print(f"Пробуем скачать TikTok через yt-dlp: {url}")
+            
+            outtmpl = os.path.join("downloads", "tiktok_%(id)s.%(ext)s")
+            ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+            
+            ydl_opts = {
+                "outtmpl": outtmpl,
+                "format": "best[ext=mp4][height<=720]",
+                "noplaylist": True,
+                "quiet": True,
+                "no_warnings": True,
+                "socket_timeout": 30,
+                "retries": 3,
+                "fragment_retries": 3,
+                "ffmpeg_location": ffmpeg_path,
+                "postprocessors": [
+                    {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
+                ]
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if not info:
+                    print("yt-dlp не смог получить информацию о видео")
+                    return None
                 
-                if api["name"] == "tikwm":
-                    # tikwm API
-                    r = requests.get(api["url"], params={"url": url}, timeout=15)
-                    r.raise_for_status()
-                    data = r.json()
-                    
-                    play_url = (
-                        data.get("data", {}).get("play")
-                        or data.get("data", {}).get("wmplay")
-                        or data.get("data", {}).get("hdplay")
-                    )
-                    
-                elif api["name"] == "tikmate":
-                    # tikmate API
-                    headers = {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    }
-                    r = requests.get(api["url"], params={"url": url}, headers=headers, timeout=20)
-                    r.raise_for_status()
-                    
-                    # Ищем видео URL в HTML ответе
-                    import re
-                    video_match = re.search(r'href="(https://[^"]+\.mp4)"', r.text)
-                    if video_match:
-                        play_url = video_match.group(1)
-                    else:
-                        print(f"API {api['name']}: не найден URL видео в HTML")
-                        continue
-                        
+                # Ищем скачанный файл
+                path = ydl.prepare_filename(info)
+                base, _ = os.path.splitext(path)
+                mp4_path = base + ".mp4"
+                
+                if os.path.exists(mp4_path):
+                    print(f"Успешно загружено через yt-dlp: {mp4_path}")
+                    return mp4_path
+                elif os.path.exists(path):
+                    print(f"Успешно загружено через yt-dlp: {path}")
+                    return path
                 else:
-                    # Другие API пока пропускаем
-                    continue
+                    print("Файл не найден после загрузки")
+                    return None
                     
-                if not play_url:
-                    print(f"API {api['name']}: не найден URL видео")
-                    continue
-                    
-                print(f"API {api['name']}: найден URL {play_url[:50]}...")
-                
-                out_path = os.path.join("downloads", f"tiktok_{int(time.time())}.mp4")
-                # Уменьшаем таймаут и увеличиваем chunk_size для более быстрой загрузки
-                with requests.get(play_url, stream=True, timeout=45) as vid:
-                    vid.raise_for_status()
-                    with open(out_path, "wb") as f:
-                        for chunk in vid.iter_content(chunk_size=1024 * 512):  # 512KB chunks
-                            if chunk:
-                                f.write(chunk)
-
-                if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-                    print(f"Успешно загружено через {api['name']}: {out_path}")
-                    return out_path
-                else:
-                    print(f"Файл не сохранен через {api['name']}")
-                    
-            except Exception as e:
-                print(f"Ошибка API {api['name']}: {e}")
-                continue
-                
-        print("Все API TikTok не сработали")
-        return None
+        except Exception as e:
+            print(f"Ошибка yt-dlp: {e}")
+            return None

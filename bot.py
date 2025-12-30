@@ -606,10 +606,19 @@ def main() -> None:
     logger.info("Бот запускается...")
     
     # Запускаем фоновые задачи
-    loop = asyncio.get_event_loop()
-    loop.create_task(worker())
-    loop.create_task(cleanup_task())
+    async def start_background_tasks():
+        loop = asyncio.get_running_loop()
+        loop.create_task(worker())
+        loop.create_task(cleanup_task())
     
+    # Создаем и запускаем event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # Запускаем фоновые задачи
+    loop.run_until_complete(start_background_tasks())
+    
+    # Запускаем бота
     app.run_polling()
 
 
