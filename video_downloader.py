@@ -65,6 +65,9 @@ class VideoDownloader:
                 "noplaylist": True,
                 "quiet": True,
                 "no_warnings": True,
+                "socket_timeout": 30,  # Таймаут сетевых операций
+                "retries": 3,  # Количество попыток
+                "fragment_retries": 3,  # Повторы для фрагментов
             }
             # Подкладываем ffmpeg без Homebrew
             ydl_opts["ffmpeg_location"] = ffmpeg_path
@@ -135,7 +138,8 @@ class VideoDownloader:
         # Обычно возвращает JSON с data.play (mp4).
         api_url = "https://tikwm.com/api/"
         try:
-            r = requests.get(api_url, params={"url": url}, timeout=30)
+            # Уменьшаем таймаут для получения метаданных
+            r = requests.get(api_url, params={"url": url}, timeout=15)
             r.raise_for_status()
             data = r.json()
 
@@ -148,10 +152,11 @@ class VideoDownloader:
                 return None
 
             out_path = os.path.join("downloads", f"tiktok_{int(time.time())}.mp4")
-            with requests.get(play_url, stream=True, timeout=60) as vid:
+            # Уменьшаем таймаут и увеличиваем chunk_size для более быстрой загрузки
+            with requests.get(play_url, stream=True, timeout=45) as vid:
                 vid.raise_for_status()
                 with open(out_path, "wb") as f:
-                    for chunk in vid.iter_content(chunk_size=1024 * 256):
+                    for chunk in vid.iter_content(chunk_size=1024 * 512):  # 512KB chunks
                         if chunk:
                             f.write(chunk)
 

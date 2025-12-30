@@ -262,23 +262,56 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, p
     video_path = None
     try:
         STATS["requests_total"] += 1
+        
+        # Обновляем статус для пользователя
+        await processing_message.edit_text("🔍 Поиск видео...")
+        
         if downloader.is_tiktok(text):
             STATS["platform"]["tiktok"] += 1
+            await processing_message.edit_text("⬇️ Скачивание TikTok видео...")
+            logger.info("Начало загрузки TikTok: %s", text)
             video_path = await asyncio.to_thread(downloader.download_tiktok, text)
+            logger.info("Результат загрузки TikTok: %s", video_path)
         else:
             STATS["platform"]["youtube"] += 1
+            await processing_message.edit_text("⬇️ Скачивание YouTube видео...")
+            logger.info("Начало загрузки YouTube: %s", text)
             video_path = await asyncio.to_thread(downloader.download_youtube_shorts, text)
+            logger.info("Результат загрузки YouTube: %s", video_path)
 
-        if not video_path or not os.path.exists(video_path):
-            raise RuntimeError("Не удалось загрузить видео (файл не найден после скачивания).")
+        if not video_path:
+            await processing_message.edit_text("❌ Не удалось загрузить видео (пустой путь)")
+            logger.error("Видео_path равен None")
+            return
+            
+        if not os.path.exists(video_path):
+            await processing_message.edit_text("❌ Не удалось загрузить видео (файл не найден)")
+            logger.error("Файл не существует: %s", video_path)
+            return
+            
+        file_size = os.path.getsize(video_path)
+        logger.info("Файл найден: %s, размер: %d bytes", video_path, file_size)
+        
+        if file_size == 0:
+            await processing_message.edit_text("❌ Файл видео пустой")
+            logger.error("Файл пустой: %s", video_path)
+            return
 
-        with open(video_path, "rb") as video_file:
-            input_file = InputFile(video_file, filename=os.path.basename(video_path) or "video.mp4")
-            await update.message.reply_video(
-                video=input_file,
-                caption="Вот ваше видео! 🎬\n@tikshorst_dowlonder_bot",
-                supports_streaming=True,
-            )
+        await processing_message.edit_text("📤 Отправка видео...")
+        
+        try:
+            with open(video_path, "rb") as video_file:
+                input_file = InputFile(video_file, filename=os.path.basename(video_path) or "video.mp4")
+                await update.message.reply_video(
+                    video=input_file,
+                    caption="Вот ваше видео! 🎬\n@tikshorst_dowlonder_bot",
+                    supports_streaming=True,
+                )
+            logger.info("Видео успешно отправлено")
+        except Exception as send_error:
+            logger.exception("Ошибка при отправке видео: %s", send_error)
+            await processing_message.edit_text(f"❌ Ошибка отправки: {send_error}")
+            return
 
         STATS["success_total"] += 1
 
@@ -286,12 +319,13 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, p
 
         try:
             os.remove(video_path)
+            logger.info("Файл удален: %s", video_path)
         except OSError:
             pass
 
     except Exception as e:
         STATS["fail_total"] += 1
-        logger.exception("Ошибка при обработке ссылки: %s", e)
+        logger.exception("Общая ошибка при обработке ссылки: %s", e)
         try:
             await processing_message.edit_text(f"❌ Ошибка: {e}")
         except Exception:
@@ -570,6 +604,12 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Бот запускается...")
+    
+    # Запускаем фоновые задачи
+    loop = asyncio.get_event_loop()
+    loop.create_task(worker())
+    loop.create_task(cleanup_task())
+    
     app.run_polling()
 
 
