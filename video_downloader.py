@@ -111,7 +111,9 @@ class VideoDownloader:
         approaches = [
             ("Стандартный", {}),
             ("Мобильный UA", {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15"}),
-            ("Desktop UA", {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+            ("Desktop UA", {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}),
+            ("YouTube Music UA", {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}),
+            ("Smart TV UA", {"User-Agent": "Mozilla/5.0 (CrKey armv7l 1.5.16041) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/31.0.1650.0 Safari/537.36"})
         ]
         
         for approach_name, headers in approaches:
@@ -135,6 +137,43 @@ class VideoDownloader:
             except Exception as e:
                 print(f"YouTube ({approach_name}): ошибка - {e}")
                 continue
+        
+        # Если все User-Agent не сработали, пробуем TikTok API как fallback
+        try:
+            print("Пробуем TikTok API для YouTube...")
+            return VideoDownloader.download_tiktok(url)
+        except Exception as e:
+            print(f"TikTok fallback тоже не сработал: {e}")
+            
+        # Последний шанс - пробуем без ограничений
+        try:
+            print("Пробуем YouTube без ограничений...")
+            ydl_opts = {
+                "outtmpl": outtmpl,
+                "format": "best",
+                "noplaylist": True,
+                "quiet": True,
+                "no_warnings": True,
+                "socket_timeout": 15,
+                "retries": 1,
+                "fragment_retries": 1,
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if info:
+                    path = ydl.prepare_filename(info)
+                    base, _ = os.path.splitext(path)
+                    mp4_path = base + ".mp4"
+                    
+                    if os.path.exists(mp4_path):
+                        print(f"YouTube без ограничений: {mp4_path}")
+                        return mp4_path
+                    elif os.path.exists(path):
+                        print(f"YouTube без ограничений: {path}")
+                        return path
+        except Exception as e:
+            print(f"Последний шанс тоже не сработал: {e}")
 
         return None
 
