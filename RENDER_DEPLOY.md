@@ -38,7 +38,7 @@ Health Check Path: / (не нужно для background worker)
 В **Settings → Environment** добавь:
 
 ```
-TELEGRAM_BOT_TOKEN=8504400803:AAGLJpgD1l043FFBodiCVlCFMfvtlN0tFGs
+TELEGRAM_BOT_TOKEN=8504400803:AAHF7sf_z_bur2TwYyDkpq2JUG4S_CL-GOk
 ADMIN_IDS=2089005500
 MAX_CONCURRENT=5
 MAX_PER_MINUTE=3
